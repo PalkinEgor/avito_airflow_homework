@@ -3,16 +3,32 @@ from scipy.sparse import csr_matrix
 import polars as pl
 import implicit
 import numpy as np
-import optuna
 import mlflow
 import argparse
+import random
 
 
-DATA_DIR = 'data\\'
+DATA_DIR = 'data/'
 EVAL_DAYS_TRESHOLD = 14
+MAX_USERS = 100000
+MAX_ITEMS = 50000
+SAMPLE_FRACTION = 0.5
 
 
 def prepare_data(df_clickstream, df_event):
+    if len(df_clickstream) > MAX_USERS * 10:
+        df_clickstream = df_clickstream.sample(fraction=SAMPLE_FRACTION, shuffle=True)
+    
+    unique_users = df_clickstream['cookie'].unique().to_list()
+    if len(unique_users) > MAX_USERS:
+        sampled_users = random.sample(unique_users, MAX_USERS)
+        df_clickstream = df_clickstream.filter(pl.col('cookie').is_in(sampled_users))
+
+    unique_items = df_clickstream['node'].unique().to_list()
+    if len(unique_items) > MAX_ITEMS:
+        sampled_items = random.sample(unique_items, MAX_ITEMS)
+        df_clickstream = df_clickstream.filter(pl.col('node').is_in(sampled_items))
+    
     treshhold = df_clickstream['event_date'].max() - timedelta(days=EVAL_DAYS_TRESHOLD)
     df_train = df_clickstream.filter(df_clickstream['event_date']<= treshhold)
     df_eval = df_clickstream.filter(df_clickstream['event_date']> treshhold)[['cookie', 'node', 'event']]
@@ -117,7 +133,7 @@ if __name__ == '__main__':
 
     df_train, df_eval = prepare_data(df_clickstream, df_event)
 
-    mlflow.set_tracking_uri('http://51.250.35.156:5000/')
+    mlflow.set_tracking_uri("http://51.250.35.156:5000/")
     experiment = mlflow.get_experiment_by_name(args.experiment)
     if experiment is None:
         experiment_id = mlflow.create_experiment(args.experiment)
